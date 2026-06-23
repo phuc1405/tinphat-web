@@ -1,5 +1,8 @@
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, send_file
 from database import init_db, get_db
+import pandas as pd
+from docx import Document
+import os
 
 app = Flask(__name__)
 app.secret_key = "erp_pro_max"
@@ -29,7 +32,7 @@ def login():
     return render_template("login.html")
 
 
-# ================= DASHBOARD (FULL FIX + PIE %) =================
+# ================= DASHBOARD =================
 @app.route("/dashboard")
 def dashboard():
     if "user" not in session:
@@ -38,19 +41,15 @@ def dashboard():
     conn = get_db()
     cur = conn.cursor()
 
-    # TOTAL PRODUCTS
     cur.execute("SELECT COUNT(*) FROM products")
     total_items = cur.fetchone()[0]
 
-    # TOTAL STOCK
     cur.execute("SELECT SUM(quantity) FROM products")
     total_stock = cur.fetchone()[0] or 0
 
-    # LOW STOCK
     cur.execute("SELECT COUNT(*) FROM products WHERE quantity < 5")
     low_stock = cur.fetchone()[0]
 
-    # REVENUE REAL
     cur.execute("""
         SELECT SUM(stock_log.quantity * products.price)
         FROM stock_log
@@ -59,7 +58,6 @@ def dashboard():
     """)
     revenue = cur.fetchone()[0] or 0
 
-    # ================= PIE CHART DATA =================
     cur.execute("""
         SELECT category, COUNT(*)
         FROM products
@@ -68,7 +66,7 @@ def dashboard():
 
     rows = cur.fetchall()
 
-    pie_labels = [r["category"] for r in rows]
+    pie_labels = [r[0] for r in rows]
     pie_values = [r[1] for r in rows]
 
     conn.close()
@@ -100,15 +98,16 @@ def products():
         quantity = int(request.form["quantity"])
         price = int(request.form["price"])
 
+        # FIX POSTGRESQL SYNTAX
         cur.execute("""
             INSERT INTO products(name, category, quantity, price)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
         """, (name, category, quantity, price))
 
     search = request.args.get("search")
 
     if search:
-        cur.execute("SELECT * FROM products WHERE name LIKE ?", ('%' + search + '%',))
+        cur.execute("SELECT * FROM products WHERE name LIKE %s", ('%' + search + '%',))
     else:
         cur.execute("SELECT * FROM products")
 
@@ -128,20 +127,20 @@ def sell(id):
 
     qty = int(request.form["quantity"])
 
-    cur.execute("SELECT quantity FROM products WHERE id=?", (id,))
+    cur.execute("SELECT quantity FROM products WHERE id=%s", (id,))
     item = cur.fetchone()
 
-    if item and item["quantity"] >= qty:
+    if item and item[0] >= qty:
 
         cur.execute("""
             UPDATE products
-            SET quantity = quantity - ?
-            WHERE id=?
+            SET quantity = quantity - %s
+            WHERE id=%s
         """, (qty, id))
 
         cur.execute("""
             INSERT INTO stock_log(product_id, action, quantity)
-            VALUES (?, 'SELL', ?)
+            VALUES (%s, 'SELL', %s)
         """, (id, qty))
 
     conn.commit()
@@ -160,13 +159,13 @@ def import_stock(id):
 
     cur.execute("""
         UPDATE products
-        SET quantity = quantity + ?
-        WHERE id=?
+        SET quantity = quantity + %s
+        WHERE id=%s
     """, (qty, id))
 
     cur.execute("""
         INSERT INTO stock_log(product_id, action, quantity)
-        VALUES (?, 'IMPORT', ?)
+        VALUES (%s, 'IMPORT', %s)
     """, (id, qty))
 
     conn.commit()
@@ -181,11 +180,53 @@ def delete(id):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("DELETE FROM products WHERE id=?", (id,))
+    cur.execute("DELETE FROM products WHERE id=%s", (id,))
     conn.commit()
     conn.close()
 
     return redirect("/products")
+
+
+# ================= EXPORT EXCEL =================
+@app.route("/export/excel")
+def export_excel():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT name, category, quantity, price FROM products")
+    data = cur.fetchall()
+
+    df = pd.DataFrame(data, columns=["name", "category", "quantity", "price"])
+
+    file_path = "products.xlsx"
+    df.to_excel(file_path, index=False)
+
+    conn.close()
+
+    return send_file(file_path, as_attachment=True)
+
+
+# ================= EXPORT WORD =================
+@app.route("/export/word")
+def export_word():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT name, category, quantity, price FROM products")
+    data = cur.fetchall()
+
+    doc = Document()
+    doc.add_heading("Báo cáo kho hàng", 0)
+
+    for row in data:
+        doc.add_paragraph(f"{row[0]} | {row[1]} | SL: {row[2]} | Giá: {row[3]}")
+
+    file_path = "products.docx"
+    doc.save(file_path)
+
+    conn.close()
+
+    return send_file(file_path, as_attachment=True)
 
 
 # ================= LOGOUT =================
