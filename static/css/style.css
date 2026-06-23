@@ -1,0 +1,25 @@
+body {
+    background: #f4f6f9;
+}
+
+.sidebar {
+    min-height: 100vh;
+    background: #111827;
+    color: white;
+    padding: 20px;
+}
+
+.sidebar a {
+    display: block;
+    color: white;
+    text-decoration: none;
+    padding: 10px;
+}
+
+.sidebar a:hover {
+    background: #374151;
+}
+
+.card {
+    border-radius: 10px;
+}
