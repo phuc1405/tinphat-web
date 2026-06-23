@@ -29,7 +29,9 @@ body { background:#f4f6f9; }
     box-shadow:0 4px 10px rgba(0,0,0,0.05);
 }
 
-.stat { padding:20px;border-radius:12px;color:white; }
+.stat {
+    padding:20px;border-radius:12px;color:white;
+}
 
 .blue{background:#2563eb;}
 .green{background:#16a34a;}
@@ -52,6 +54,12 @@ body { background:#f4f6f9; }
 
 <h2>📊 Dashboard ERP PRO</h2>
 
+<!-- EXPORT BUTTONS -->
+<div style="margin:10px 0;">
+    <a href="/export/excel" class="btn btn-success">📊 Export Excel</a>
+    <a href="/export/word" class="btn btn-primary">📄 Export Word</a>
+</div>
+
 <br>
 
 <div class="row">
@@ -59,28 +67,28 @@ body { background:#f4f6f9; }
 <div class="col-md-3">
 <div class="stat blue">
 <h5>Sản phẩm</h5>
-<h2>{{ total_items }}</h2>
+<h2>{{ total_items | default(0) }}</h2>
 </div>
 </div>
 
 <div class="col-md-3">
 <div class="stat green">
 <h5>Tồn kho</h5>
-<h2>{{ total_stock }}</h2>
+<h2>{{ total_stock | default(0) }}</h2>
 </div>
 </div>
 
 <div class="col-md-3">
 <div class="stat orange">
 <h5>Doanh thu</h5>
-<h2>{{ today_income }} đ</h2>
+<h2>{{ today_income | default(0) }} đ</h2>
 </div>
 </div>
 
 <div class="col-md-3">
 <div class="stat red">
 <h5>Sắp hết</h5>
-<h2>{{ low_stock }}</h2>
+<h2>{{ low_stock | default(0) }}</h2>
 </div>
 </div>
 
@@ -99,7 +107,7 @@ body { background:#f4f6f9; }
 
 <div class="col-md-4">
 <div class="card-box">
-<h5>📊 Tỷ lệ sản phẩm (%)</h5>
+<h5>📊 Tỷ lệ sản phẩm</h5>
 <canvas id="pie"></canvas>
 </div>
 </div>
@@ -110,26 +118,39 @@ body { background:#f4f6f9; }
 
 <script>
 
-// BAR
+// 🔥 FIX 1: đảm bảo number type (tránh string trên Render)
+const income = Number({{ today_income | default(0) }});
+
+// 🔥 FIX 2: luôn có mảng an toàn
+const labels = {{ pie_labels | default([]) | tojson }};
+const values = {{ pie_values | default([]) | tojson }};
+
+// BAR CHART
 new Chart(document.getElementById("bar"), {
 type:"bar",
 data:{
 labels:["Doanh thu"],
 datasets:[{
-data:[{{ today_income }}],
+data:[income],
 backgroundColor:["#16a34a"]
 }]
 }
 });
 
-// PIE %
+// PIE CHART
 new Chart(document.getElementById("pie"), {
 type:"doughnut",
 data:{
-labels: {{ pie_labels | tojson }},
+labels: labels,
 datasets:[{
-data: {{ pie_values | tojson }},
-backgroundColor:["#2563eb","#16a34a","#f59e0b","#dc2626","#9333ea"]
+data: values,
+backgroundColor:[
+"#2563eb",
+"#16a34a",
+"#f59e0b",
+"#dc2626",
+"#9333ea"
+]
 }]
 }
 });
