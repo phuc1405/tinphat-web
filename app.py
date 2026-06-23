@@ -179,28 +179,27 @@ def import_stock(id):
 # ================= HISTORY =================
 @app.route("/history")
 def history():
+    if "user" not in session:
+        return redirect("/")
+
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor()
 
     cur.execute("""
-        SELECT 
-            t.id,
-            p.name,
-            t.action,
-            t.quantity,
-            t.price,
-            t.total,
-            t.created_at
-        FROM transactions t
-        LEFT JOIN products p ON t.product_id = p.id
-        ORDER BY t.created_at DESC
+        SELECT stock_log.id,
+               products.name,
+               stock_log.action,
+               stock_log.quantity,
+               stock_log.created_at
+        FROM stock_log
+        JOIN products ON products.id = stock_log.product_id
+        ORDER BY stock_log.id DESC
     """)
 
     data = cur.fetchall()
     conn.close()
 
-    return render_template("history.html", data=data)
-
+    return render_template("history.html", logs=data)
 
 # ================= EXPORT EXCEL =================
 @app.route("/export/excel")
