@@ -37,6 +37,7 @@ body { background:#f4f6f9; }
 <hr>
 <a href="/dashboard">📊 Dashboard</a>
 <a href="/products">📦 Products</a>
+<a href="/history">📜 History</a>
 <a href="/logout">🚪 Logout</a>
 </div>
 
@@ -44,7 +45,7 @@ body { background:#f4f6f9; }
 
 <h2>📦 Products</h2>
 
-<!-- EXPORT BUTTONS -->
+<!-- EXPORT -->
 <div style="margin-bottom:15px;">
     <a href="/export/excel" class="btn btn-success">📊 Export Excel</a>
     <a href="/export/word" class="btn btn-primary">📄 Export Word</a>
@@ -100,12 +101,12 @@ body { background:#f4f6f9; }
 {% for p in products | default([]) %}
 
 <tr>
-<td>{{ p["id"] }}</td>
-<td>{{ p["name"] }}</td>
-<td>{{ p["category"] }}</td>
+<td>{{ p.id | default(0) }}</td>
+<td>{{ p.name | default('') }}</td>
+<td>{{ p.category | default('') }}</td>
 
 <td>
-{% set qty = p["quantity"] | default(0) %}
+{% set qty = p.quantity | default(0) %}
 
 {% if qty <= 0 %}
     <span class="text-danger">{{ qty }}</span>
@@ -114,24 +115,24 @@ body { background:#f4f6f9; }
 {% endif %}
 </td>
 
-<td>{{ p["price"] | default(0) }}</td>
+<td>{{ p.price | default(0) }}</td>
 
 <td>
 
 <!-- SELL -->
-<form method="POST" action="/sell/{{ p['id'] }}" style="display:inline;">
+<form method="POST" action="/sell/{{ p.id }}" style="display:inline;">
 <input type="number" name="quantity" placeholder="Sell" style="width:70px" required>
 <button class="btn btn-sm btn-danger">Bán</button>
 </form>
 
 <!-- IMPORT -->
-<form method="POST" action="/import/{{ p['id'] }}" style="display:inline;">
+<form method="POST" action="/import/{{ p.id }}" style="display:inline;">
 <input type="number" name="quantity" placeholder="Nhập" style="width:70px" required>
 <button class="btn btn-sm btn-success">Nhập</button>
 </form>
 
 <!-- DELETE -->
-<a href="/delete/{{ p['id'] }}" class="btn btn-sm btn-dark">Xóa</a>
+<a href="/delete/{{ p.id }}" class="btn btn-sm btn-dark">Xóa</a>
 
 </td>
 </tr>

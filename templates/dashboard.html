@@ -45,16 +45,19 @@ body { background:#f4f6f9; }
 <div class="sidebar">
 <h4>🏢 ERP PRO</h4>
 <hr>
+
 <a href="/dashboard">📊 Dashboard</a>
 <a href="/products">📦 Products</a>
+<a href="/history">📜 History</a>
 <a href="/logout">🚪 Logout</a>
+
 </div>
 
 <div class="content">
 
 <h2>📊 Dashboard ERP PRO</h2>
 
-<!-- EXPORT BUTTONS -->
+<!-- EXPORT -->
 <div style="margin:10px 0;">
     <a href="/export/excel" class="btn btn-success">📊 Export Excel</a>
     <a href="/export/word" class="btn btn-primary">📄 Export Word</a>
@@ -118,14 +121,14 @@ body { background:#f4f6f9; }
 
 <script>
 
-// 🔥 FIX 1: đảm bảo number type (tránh string trên Render)
+// SAFE DATA (FIX RENDER NULL ERROR)
 const income = Number({{ today_income | default(0) }});
 
-// 🔥 FIX 2: luôn có mảng an toàn
-const labels = {{ pie_labels | default([]) | tojson }};
-const values = {{ pie_values | default([]) | tojson }};
+// luôn ép array an toàn
+const labels = JSON.parse('{{ pie_labels | tojson | safe }}' || "[]");
+const values = JSON.parse('{{ pie_values | tojson | safe }}' || "[]");
 
-// BAR CHART
+// BAR
 new Chart(document.getElementById("bar"), {
 type:"bar",
 data:{
@@ -137,7 +140,7 @@ backgroundColor:["#16a34a"]
 }
 });
 
-// PIE CHART
+// PIE
 new Chart(document.getElementById("pie"), {
 type:"doughnut",
 data:{

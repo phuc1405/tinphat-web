@@ -1,15 +1,20 @@
 import os
 import psycopg2
-import psycopg2.extras
+from dotenv import load_dotenv
+import os
+import psycopg2
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+load_dotenv()
 
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# ================= CONNECT DB =================
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL)
-    conn.autocommit = False
-    return conn
+    print("DEBUG DB:", DATABASE_URL)
+
+    if not DATABASE_URL:
+        raise Exception("Không đọc được DATABASE_URL")
+
+    return psycopg2.connect(DATABASE_URL)
 
 
 # ================= INIT DATABASE =================
@@ -17,6 +22,7 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
 
+    # PRODUCTS
     cur.execute("""
         CREATE TABLE IF NOT EXISTS products (
             id SERIAL PRIMARY KEY,
@@ -27,6 +33,7 @@ def init_db():
         )
     """)
 
+    # STOCK LOG (lịch sử nhập/xuất)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS stock_log (
             id SERIAL PRIMARY KEY,
