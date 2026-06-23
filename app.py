@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, session, send_file
 from database import init_db, get_db
 import pandas as pd
 from docx import Document
-import os
+import psycopg2.extras
 
 app = Flask(__name__)
 app.secret_key = "erp_pro_max"
@@ -39,35 +39,35 @@ def dashboard():
         return redirect("/")
 
     conn = get_db()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute("SELECT COUNT(*) FROM products")
-    total_items = cur.fetchone()[0]
+    total_items = cur.fetchone()["count"]
 
-    cur.execute("SELECT SUM(quantity) FROM products")
-    total_stock = cur.fetchone()[0] or 0
+    cur.execute("SELECT COALESCE(SUM(quantity),0) FROM products")
+    total_stock = cur.fetchone()["coalesce"]
 
     cur.execute("SELECT COUNT(*) FROM products WHERE quantity < 5")
-    low_stock = cur.fetchone()[0]
+    low_stock = cur.fetchone()["count"]
 
     cur.execute("""
-        SELECT SUM(stock_log.quantity * products.price)
+        SELECT COALESCE(SUM(stock_log.quantity * products.price),0)
         FROM stock_log
         JOIN products ON stock_log.product_id = products.id
         WHERE stock_log.action = 'SELL'
     """)
-    revenue = cur.fetchone()[0] or 0
+    revenue = cur.fetchone()["coalesce"]
 
     cur.execute("""
-        SELECT category, COUNT(*)
+        SELECT category, COUNT(*) as total
         FROM products
         GROUP BY category
     """)
 
     rows = cur.fetchall()
 
-    pie_labels = [r[0] for r in rows]
-    pie_values = [r[1] for r in rows]
+    pie_labels = [r["category"] for r in rows]
+    pie_values = [r["total"] for r in rows]
 
     conn.close()
 
@@ -90,7 +90,7 @@ def products():
         return redirect("/")
 
     conn = get_db()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if request.method == "POST":
         name = request.form["name"]
@@ -98,7 +98,6 @@ def products():
         quantity = int(request.form["quantity"])
         price = int(request.form["price"])
 
-        # FIX POSTGRESQL SYNTAX
         cur.execute("""
             INSERT INTO products(name, category, quantity, price)
             VALUES (%s, %s, %s, %s)
@@ -107,9 +106,9 @@ def products():
     search = request.args.get("search")
 
     if search:
-        cur.execute("SELECT * FROM products WHERE name LIKE %s", ('%' + search + '%',))
+        cur.execute("SELECT * FROM products WHERE name ILIKE %s", ('%' + search + '%',))
     else:
-        cur.execute("SELECT * FROM products")
+        cur.execute("SELECT * FROM products ORDER BY id DESC")
 
     data = cur.fetchall()
 
@@ -131,7 +130,6 @@ def sell(id):
     item = cur.fetchone()
 
     if item and item[0] >= qty:
-
         cur.execute("""
             UPDATE products
             SET quantity = quantity - %s
@@ -191,12 +189,12 @@ def delete(id):
 @app.route("/export/excel")
 def export_excel():
     conn = get_db()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute("SELECT name, category, quantity, price FROM products")
     data = cur.fetchall()
 
-    df = pd.DataFrame(data, columns=["name", "category", "quantity", "price"])
+    df = pd.DataFrame(data)
 
     file_path = "products.xlsx"
     df.to_excel(file_path, index=False)
@@ -210,7 +208,7 @@ def export_excel():
 @app.route("/export/word")
 def export_word():
     conn = get_db()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute("SELECT name, category, quantity, price FROM products")
     data = cur.fetchall()
@@ -219,7 +217,9 @@ def export_word():
     doc.add_heading("Báo cáo kho hàng", 0)
 
     for row in data:
-        doc.add_paragraph(f"{row[0]} | {row[1]} | SL: {row[2]} | Giá: {row[3]}")
+        doc.add_paragraph(
+            f"{row['name']} | {row['category']} | SL: {row['quantity']} | Giá: {row['price']}"
+        )
 
     file_path = "products.docx"
     doc.save(file_path)
