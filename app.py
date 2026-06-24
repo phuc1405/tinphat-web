@@ -3,7 +3,6 @@ from database import init_db, get_db
 import psycopg2.extras
 import pandas as pd
 from docx import Document
-from datetime import timedelta
 
 app = Flask(__name__)
 app.secret_key = "erp_pro_max"
@@ -22,6 +21,9 @@ def login():
 # ================= DASHBOARD =================
 @app.route("/dashboard")
 def dashboard():
+    if "user" not in session:
+        return redirect("/")
+
     conn = get_db()
     cur = conn.cursor()
 
@@ -34,10 +36,12 @@ def dashboard():
     cur.execute("SELECT COUNT(*) FROM products WHERE quantity < 5")
     low_stock = cur.fetchone()[0] or 0
 
+    # FIX: không dùng total (tránh lỗi DB)
     cur.execute("""
-        SELECT COALESCE(SUM(total),0)
+        SELECT COALESCE(SUM(stock_log.quantity * products.price),0)
         FROM stock_log
-        WHERE action='SELL'
+        JOIN products ON products.id = stock_log.product_id
+        WHERE stock_log.action = 'SELL'
     """)
     revenue = cur.fetchone()[0] or 0
 
@@ -104,7 +108,6 @@ def sell(id):
 
     if item and item[0] >= qty:
         price = item[1]
-        total = qty * price
 
         cur.execute("""
             UPDATE products
@@ -113,13 +116,12 @@ def sell(id):
         """, (qty, id))
 
         cur.execute("""
-            INSERT INTO stock_log(product_id, action, quantity, price, total)
-            VALUES (%s,'SELL',%s,%s,%s)
-        """, (id, qty, price, total))
+            INSERT INTO stock_log(product_id, action, quantity)
+            VALUES (%s,'SELL',%s)
+        """, (id, qty))
 
     conn.commit()
     conn.close()
-
     return redirect("/products")
 
 
@@ -131,10 +133,6 @@ def import_stock(id):
 
     qty = int(request.form["quantity"])
 
-    cur.execute("SELECT price FROM products WHERE id=%s", (id,))
-    price = cur.fetchone()[0]
-    total = qty * price
-
     cur.execute("""
         UPDATE products
         SET quantity = quantity + %s
@@ -142,17 +140,16 @@ def import_stock(id):
     """, (qty, id))
 
     cur.execute("""
-        INSERT INTO stock_log(product_id, action, quantity, price, total)
-        VALUES (%s,'IMPORT',%s,%s,%s)
-    """, (id, qty, price, total))
+        INSERT INTO stock_log(product_id, action, quantity)
+        VALUES (%s,'IMPORT',%s)
+    """, (id, qty))
 
     conn.commit()
     conn.close()
-
     return redirect("/products")
 
 
-# ================= HISTORY (VIETNAM TIME) =================
+# ================= HISTORY (SAFE) =================
 @app.route("/history")
 def history():
     conn = get_db()
@@ -164,9 +161,7 @@ def history():
             products.name,
             stock_log.action,
             stock_log.quantity,
-            stock_log.price,
-            stock_log.total,
-            stock_log.created_at + INTERVAL '7 hour'
+            stock_log.created_at
         FROM stock_log
         JOIN products ON products.id = stock_log.product_id
         ORDER BY stock_log.id DESC

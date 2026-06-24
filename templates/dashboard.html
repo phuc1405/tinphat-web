@@ -3,22 +3,28 @@ def dashboard():
     conn = get_db()
     cur = conn.cursor()
 
+    # tổng sản phẩm
     cur.execute("SELECT COUNT(*) FROM products")
     total_items = cur.fetchone()[0] or 0
 
+    # tổng tồn kho
     cur.execute("SELECT COALESCE(SUM(quantity),0) FROM products")
     total_stock = cur.fetchone()[0] or 0
 
+    # cảnh báo sắp hết hàng
     cur.execute("SELECT COUNT(*) FROM products WHERE quantity < 5")
     low_stock = cur.fetchone()[0] or 0
 
+    # DOANH THU (FIX QUAN TRỌNG)
     cur.execute("""
-        SELECT COALESCE(SUM(total),0)
+        SELECT COALESCE(SUM(stock_log.quantity * products.price),0)
         FROM stock_log
-        WHERE action='SELL'
+        JOIN products ON products.id = stock_log.product_id
+        WHERE stock_log.action = 'SELL'
     """)
     revenue = cur.fetchone()[0] or 0
 
+    # thống kê category
     cur.execute("""
         SELECT COALESCE(category, 'Không phân loại'), COUNT(*)
         FROM products
