@@ -1,43 +1,27 @@
 from flask import Flask, render_template, request, redirect, session, send_file
 from database import init_db, get_db
+import psycopg2.extras
 import pandas as pd
 from docx import Document
-import psycopg2.extras
+from datetime import timedelta
 
 app = Flask(__name__)
 app.secret_key = "erp_pro_max"
 
 init_db()
 
-users = {
-    "admin": {"password": "123456", "role": "admin"},
-    "kho1": {"password": "123456", "role": "warehouse"},
-    "sale1": {"password": "123456", "role": "sales"}
-}
-
 # ================= LOGIN =================
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        u = request.form["username"]
-        p = request.form["password"]
-
-        if u in users and users[u]["password"] == p:
-            session["user"] = u
-            session["role"] = users[u]["role"]
-            return redirect("/dashboard")
-
-        return render_template("login.html", error="Sai tài khoản")
-
+        session["user"] = request.form["username"]
+        return redirect("/dashboard")
     return render_template("login.html")
 
 
 # ================= DASHBOARD =================
 @app.route("/dashboard")
 def dashboard():
-    if "user" not in session:
-        return redirect("/")
-
     conn = get_db()
     cur = conn.cursor()
 
@@ -51,14 +35,11 @@ def dashboard():
     low_stock = cur.fetchone()[0] or 0
 
     cur.execute("""
-    SELECT COALESCE(SUM(stock_log.quantity * products.price),0)
-    FROM stock_log
-    JOIN products
-        ON stock_log.product_id = products.id
-    WHERE stock_log.action='SELL'
-""")
-
-    revenue = cur.fetchone()[0]
+        SELECT COALESCE(SUM(total),0)
+        FROM stock_log
+        WHERE action='SELL'
+    """)
+    revenue = cur.fetchone()[0] or 0
 
     cur.execute("""
         SELECT category, COUNT(*)
@@ -74,15 +55,15 @@ def dashboard():
     conn.close()
 
     return render_template(
-    "dashboard.html",
-    total_items=total_items,
-    total_stock=total_stock,
-    low_stock=low_stock,
-    today_income=revenue,
-    month_income=revenue,
-    pie_labels=pie_labels,
-    pie_values=pie_values
-)
+        "dashboard.html",
+        total_items=total_items,
+        total_stock=total_stock,
+        low_stock=low_stock,
+        today_income=revenue,
+        pie_labels=pie_labels,
+        pie_values=pie_values
+    )
+
 
 # ================= PRODUCTS =================
 @app.route("/products", methods=["GET", "POST"])
@@ -101,13 +82,7 @@ def products():
             VALUES (%s,%s,%s,%s)
         """, (name, category, quantity, price))
 
-    search = request.args.get("search")
-
-    if search:
-        cur.execute("SELECT * FROM products WHERE name ILIKE %s", ('%' + search + '%',))
-    else:
-        cur.execute("SELECT * FROM products ORDER BY id DESC")
-
+    cur.execute("SELECT * FROM products ORDER BY id DESC")
     data = cur.fetchall()
 
     conn.commit()
@@ -138,9 +113,10 @@ def sell(id):
         """, (qty, id))
 
         cur.execute("""
-    INSERT INTO stock_log(product_id, action, quantity)
-    VALUES (%s,'SELL',%s)
-""", (id, qty))
+            INSERT INTO stock_log(product_id, action, quantity, price, total)
+            VALUES (%s,'SELL',%s,%s,%s)
+        """, (id, qty, price, total))
+
     conn.commit()
     conn.close()
 
@@ -156,9 +132,7 @@ def import_stock(id):
     qty = int(request.form["quantity"])
 
     cur.execute("SELECT price FROM products WHERE id=%s", (id,))
-    item = cur.fetchone()
-
-    price = item[0]
+    price = cur.fetchone()[0]
     total = qty * price
 
     cur.execute("""
@@ -168,9 +142,9 @@ def import_stock(id):
     """, (qty, id))
 
     cur.execute("""
-    INSERT INTO stock_log(product_id, action, quantity)
-    VALUES (%s,'IMPORT',%s)
-""", (id, qty))
+        INSERT INTO stock_log(product_id, action, quantity, price, total)
+        VALUES (%s,'IMPORT',%s,%s,%s)
+    """, (id, qty, price, total))
 
     conn.commit()
     conn.close()
@@ -178,30 +152,31 @@ def import_stock(id):
     return redirect("/products")
 
 
-# ================= HISTORY =================
+# ================= HISTORY (VIETNAM TIME) =================
 @app.route("/history")
 def history():
-    if "user" not in session:
-        return redirect("/")
-
     conn = get_db()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT stock_log.id,
-               products.name,
-               stock_log.action,
-               stock_log.quantity,
-               stock_log.created_at
+        SELECT
+            stock_log.id,
+            products.name,
+            stock_log.action,
+            stock_log.quantity,
+            stock_log.price,
+            stock_log.total,
+            stock_log.created_at + INTERVAL '7 hour'
         FROM stock_log
         JOIN products ON products.id = stock_log.product_id
         ORDER BY stock_log.id DESC
     """)
 
-    data = cur.fetchall()
+    rows = cur.fetchall()
     conn.close()
 
-    return render_template("history.html", logs=data)
+    return render_template("history.html", logs=rows)
+
 
 # ================= EXPORT EXCEL =================
 @app.route("/export/excel")
@@ -209,12 +184,11 @@ def export_excel():
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cur.execute("SELECT name, category, quantity, price FROM products")
+    cur.execute("SELECT * FROM products")
     data = cur.fetchall()
 
     pd.DataFrame(data).to_excel("products.xlsx", index=False)
 
-    conn.close()
     return send_file("products.xlsx", as_attachment=True)
 
 
@@ -224,7 +198,7 @@ def export_word():
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cur.execute("SELECT name, category, quantity, price FROM products")
+    cur.execute("SELECT * FROM products")
     data = cur.fetchall()
 
     doc = Document()
@@ -235,16 +209,9 @@ def export_word():
 
     doc.save("products.docx")
 
-    conn.close()
     return send_file("products.docx", as_attachment=True)
 
 
-# ================= LOGOUT =================
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/")
-
-
+# ================= RUN =================
 if __name__ == "__main__":
     app.run(debug=True)

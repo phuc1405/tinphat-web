@@ -1,18 +1,15 @@
 import os
 import psycopg2
+import psycopg2.extras
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_db():
-    print("DEBUG DB:", DATABASE_URL)
-
     if not DATABASE_URL:
-        raise Exception("Không đọc được DATABASE_URL")
+        raise Exception("Missing DATABASE_URL")
 
     return psycopg2.connect(DATABASE_URL)
 
-
-# ================= INIT DATABASE =================
 def init_db():
     conn = get_db()
     cur = conn.cursor()
@@ -28,13 +25,15 @@ def init_db():
         )
     """)
 
-    # STOCK LOG
+    # STOCK LOG (quan trọng nhất)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS stock_log (
             id SERIAL PRIMARY KEY,
             product_id INTEGER,
             action TEXT,
             quantity INTEGER,
+            price INTEGER DEFAULT 0,
+            total INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
