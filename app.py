@@ -51,11 +51,14 @@ def dashboard():
     low_stock = cur.fetchone()[0] or 0
 
     cur.execute("""
-        SELECT COALESCE(SUM(total),0)
-        FROM transactions
-        WHERE action='SELL'
-    """)
-    revenue = cur.fetchone()[0] or 0
+    SELECT COALESCE(SUM(stock_log.quantity * products.price),0)
+    FROM stock_log
+    JOIN products
+        ON stock_log.product_id = products.id
+    WHERE stock_log.action='SELL'
+""")
+
+    revenue = cur.fetchone()[0]
 
     cur.execute("""
         SELECT category, COUNT(*)
@@ -71,15 +74,15 @@ def dashboard():
     conn.close()
 
     return render_template(
-        "dashboard.html",
-        total_items=total_items,
-        total_stock=total_stock,
-        low_stock=low_stock,
-        today_income=revenue,
-        pie_labels=pie_labels,
-        pie_values=pie_values
-    )
-
+    "dashboard.html",
+    total_items=total_items,
+    total_stock=total_stock,
+    low_stock=low_stock,
+    today_income=revenue,
+    month_income=revenue,
+    pie_labels=pie_labels,
+    pie_values=pie_values
+)
 
 # ================= PRODUCTS =================
 @app.route("/products", methods=["GET", "POST"])
@@ -135,10 +138,9 @@ def sell(id):
         """, (qty, id))
 
         cur.execute("""
-            INSERT INTO transactions(product_id, action, quantity, price, total)
-            VALUES (%s,'SELL',%s,%s,%s)
-        """, (id, qty, price, total))
-
+    INSERT INTO stock_log(product_id, action, quantity)
+    VALUES (%s,'SELL',%s)
+""", (id, qty))
     conn.commit()
     conn.close()
 
@@ -166,9 +168,9 @@ def import_stock(id):
     """, (qty, id))
 
     cur.execute("""
-        INSERT INTO transactions(product_id, action, quantity, price, total)
-        VALUES (%s,'IMPORT',%s,%s,%s)
-    """, (id, qty, price, total))
+    INSERT INTO stock_log(product_id, action, quantity)
+    VALUES (%s,'IMPORT',%s)
+""", (id, qty))
 
     conn.commit()
     conn.close()
